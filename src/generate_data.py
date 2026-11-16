@@ -1,7 +1,8 @@
 """Generate the sample order-to-delivery event log.
 
-500 orders over 90 days, 4 warehouses, 5 stages per order. One row per
-order per stage with start and end timestamps.
+100,000 orders over 90 days, 4 warehouses, 5 stages per order. One row per
+order per stage with start and end timestamps (about 500k rows). Saved as a
+gzipped CSV to keep it a sensible size for GitHub; pandas reads it directly.
 
 The operation I'm simulating:
 - Order Placed: payment check + release to the warehouse (system step, ~30 min)
@@ -25,10 +26,10 @@ import numpy as np
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT / "data" / "process_events.csv"
+OUT = ROOT / "data" / "process_events.csv.gz"
 
 SEED = 27
-N_ORDERS = 500
+N_ORDERS = 100_000
 START = datetime(2026, 8, 1)
 DAYS = 90
 SNAPSHOT = START + timedelta(days=DAYS)  # data pulled at midnight after day 90
@@ -135,11 +136,13 @@ def build():
 
     df = pd.DataFrame(rows)
     OUT.parent.mkdir(exist_ok=True)
-    df.to_csv(OUT, index=False, date_format="%Y-%m-%d %H:%M:%S", lineterminator="\n")
+    # mtime=0 so the same seed always gives a byte-identical file
+    df.to_csv(OUT, index=False, date_format="%Y-%m-%d %H:%M:%S", lineterminator="\n",
+              compression={"method": "gzip", "mtime": 0})
     return df
 
 
 if __name__ == "__main__":
     df = build()
     done = df.groupby("OrderID")["Stage"].count().eq(5) & df.groupby("OrderID")["StageEndTime"].count().eq(5)
-    print(f"Saved {len(df)} rows, {df.OrderID.nunique()} orders ({(~done).sum()} still in flight) -> {OUT.relative_to(ROOT)}")
+    print(f"Saved {len(df):,} rows, {df.OrderID.nunique():,} orders ({(~done).sum()} still in flight) -> {OUT.relative_to(ROOT)}")
