@@ -1,0 +1,4 @@
+cycle_band,orders,avg_cycle_hours,pct_order_placed,pct_picked,pct_packed,pct_dispatched,pct_delivered
+1. under 12h,89018,5.1,9.8,13.1,52.0,13.1,12.0
+2. 12-24h,8646,16.5,3.1,4.3,84.6,4.2,3.8
+3. over 24h,2026,31.2,1.6,2.2,91.9,2.2,2.0

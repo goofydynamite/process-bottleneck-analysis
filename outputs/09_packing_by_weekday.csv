@@ -1,0 +1,8 @@
+weekday_num,weekday,orders,no_sunday_shift_avg_min,sunday_shift_avg_min
+0,Sun,14187,1000.7,142.9
+1,Mon,14242,212.9,144.0
+2,Tue,14468,216.8,143.0
+3,Wed,14536,215.6,141.4
+4,Thu,14728,212.4,139.8
+5,Fri,13137,219.0,140.5
+6,Sat,14464,360.9,143.4

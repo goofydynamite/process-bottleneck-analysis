@@ -19,4 +19,25 @@ I'm working through an event log for 100,000 orders (about 500k stage records) m
 
 The generator builds in a few realistic operational problems and some untidiness (310 orders still in flight at the cut-off). The numbers are illustrative, but the method works the same on a real WMS or OMS export.
 
-Analysis in progress.
+## SQL
+
+All queries run on SQLite. `sql/00_views.sql` builds three views: `stage_durations` (time per order per stage), `complete_orders` and `order_cycle` (one row per delivered order with minutes per stage and total hours).
+
+| File | What it answers |
+|---|---|
+| 01_data_checks.sql | row counts, in-flight orders, negative durations, duplicates, gaps between stages |
+| 02_stage_durations.sql | duration of every stage per order (exports a 20-order sample) |
+| 03_stage_summary.sql | average, median, P90, P95 and share of total time per stage |
+| 04_order_cycle_time.sql | end-to-end cycle time percentiles |
+| 05_slow_order_breakdown.sql | stage share of time for orders under 12h, 12-24h, over 24h |
+| 06_packing_by_warehouse.sql | packing average and P90 by warehouse |
+| 07_stage_by_warehouse_region.sql | every stage by warehouse x region |
+| 08_packing_by_arrival_time.sql | packing time by the time of day the order reached the bench |
+| 09_packing_by_weekday.sql | packing time by day of week |
+| 10_weekly_trend.sql | weekly averages per stage over the 90 days |
+
+SQLite has no percentile function, so P90/P95 use the nearest-rank method with `ROW_NUMBER()` and `COUNT()` window functions. The Python analysis will use the same method so the numbers line up.
+
+`python src/run_sql.py` loads the gzipped log into `data/process.db` in 100k-row chunks, adds indexes on `(OrderID, Stage)` and `Stage`, runs every query and saves the results to `outputs/` with the run time of each. The whole SQL layer takes about 15 seconds on 500k rows.
+
+Python analysis in progress.

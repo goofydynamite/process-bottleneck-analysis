@@ -1,0 +1,9 @@
+check_name,value
+rows,499445
+orders,100000
+delivered orders,99690
+orders still in flight,310
+stages with no end time,310
+negative durations,0
+duplicate order-stage rows,0
+stage gaps or overlaps,0

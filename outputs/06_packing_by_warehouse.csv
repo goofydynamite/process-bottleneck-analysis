@@ -1,0 +1,5 @@
+WarehouseID,packed_orders,avg_pack_min,p50_pack_min,p90_pack_min,pct_pack_over_4h,avg_cycle_hours,pct_cycle_over_12h
+WH03,23907,417.9,258.9,990.9,53.0,9.41,23.8
+WH02,27800,288.6,113.7,834.9,30.0,7.25,15.5
+WH04,18116,146.1,86.8,426.0,17.5,4.88,1.6
+WH01,29939,139.8,80.3,421.2,16.8,4.77,1.2
