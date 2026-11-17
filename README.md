@@ -36,8 +36,28 @@ All queries run on SQLite. `sql/00_views.sql` builds three views: `stage_duratio
 | 09_packing_by_weekday.sql | packing time by day of week |
 | 10_weekly_trend.sql | weekly averages per stage over the 90 days |
 
-SQLite has no percentile function, so P90/P95 use the nearest-rank method with `ROW_NUMBER()` and `COUNT()` window functions. The Python analysis will use the same method so the numbers line up.
+SQLite has no percentile function, so P90/P95 use the nearest-rank method with `ROW_NUMBER()` and `COUNT()` window functions. The notebook uses the same method and checks its numbers against the SQL output.
 
 `python src/run_sql.py` loads the gzipped log into `data/process.db` in 100k-row chunks, adds indexes on `(OrderID, Stage)` and `Stage`, runs every query and saves the results to `outputs/` with the run time of each. The whole SQL layer takes about 15 seconds on 500k rows.
 
-Python analysis in progress.
+## Python analysis
+
+[notebooks/process_bottleneck_analysis.ipynb](notebooks/process_bottleneck_analysis.ipynb) covers data checks, stage percentiles, box plots, the slow-order breakdown, warehouse/region variance (with Kruskal-Wallis and Mann-Whitney tests), time of day and day of week, the 90-day trend and the what-if scenarios. The notebook is generated from `src/analysis.py`.
+
+The strip chart of packing times plots 1,500 sampled orders per warehouse so 100k points don't turn into a blob; the median and P90 lines use every order.
+
+## Findings
+
+- Packing is the bottleneck. It's 63% of all process time: 4.2 hours on average against 30-40 minutes for every other stage.
+- The average hides how bad it is. Packing's P90 is 9.7 hours (2.3x its mean); every other stage's P90 is about 1.6x its mean.
+- For orders that took over 24 hours end to end, Packing was 92% of their time. For orders taking 12-24 hours, 85%.
+- The problem is concentrated: WH02 and WH03 don't pack on Sundays (Sunday arrivals wait about 17 hours), nothing is packed between 22:00 and 06:00, 14:00-18:00 is the slowest daytime window, and WH03 got markedly slower from mid-September.
+- Delivery region isn't a factor once you account for which warehouse ships the order.
+
+![Average vs P90 by stage](reports/figures/01_avg_vs_p90_by_stage.png)
+
+![Stage share by cycle time band](reports/figures/04_stage_share_by_cycle_band.png)
+
+![Packing time by warehouse and arrival window](reports/figures/06_packing_heatmap_warehouse_by_hour.png)
+
+Recommendation write-up in progress.
