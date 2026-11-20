@@ -2,7 +2,33 @@
 
 Which step in the order-to-delivery process takes the longest, and where would fixing it cut total cycle time the most?
 
-I'm working through an event log for 100,000 orders (about 500k stage records) moving through five stages (Order Placed, Picked, Packed, Dispatched, Delivered) at four warehouses over 90 days, using SQL and Python.
+I built an event log for 100,000 orders (about 500k stage records) moving through five stages (Order Placed, Picked, Packed, Dispatched, Delivered) at four warehouses over 90 days, then worked through it with SQL and Python the way I would with a real warehouse system export: stage durations, averages vs P90/P95, which stage drives the slow orders, then slicing that stage by warehouse, region, time of day, day of week and week.
+
+Tools: SQL (SQLite), Python (pandas, matplotlib, scipy), Jupyter.
+
+## Findings
+
+- Packing is the bottleneck. It's 63% of all process time: 4.2 hours on average against 30-40 minutes for every other stage.
+- The average hides how bad it is. Packing's P90 is 9.7 hours (2.3x its mean); every other stage's P90 is about 1.6x its mean.
+- For orders that took over 24 hours end to end, Packing was 92% of their time. For orders taking 12-24 hours, 85%.
+- The problem is concentrated: WH02 and WH03 don't pack on Sundays (Sunday arrivals wait about 17 hours), nothing is packed between 22:00 and 06:00, 14:00-18:00 is the slowest daytime window, and WH03 got markedly slower from mid-September.
+- Delivery region isn't a factor once you account for which warehouse ships the order.
+
+![Average vs P90 by stage](reports/figures/01_avg_vs_p90_by_stage.png)
+
+![Stage share by cycle time band](reports/figures/04_stage_share_by_cycle_band.png)
+
+![Packing time by warehouse and arrival window](reports/figures/06_packing_heatmap_warehouse_by_hour.png)
+
+## Recommendation
+
+Add a Sunday packing shift at WH02 and WH03 first. On its own it cuts same-day delivery misses from 8.3% to 1.0% and orders over 12 hours by almost two thirds. Then test covering the overnight gap, add packing capacity for 14:00-18:00, and find out what changed at WH03 in mid-September before spending money there.
+
+With all four fixes, average Packing time drops from 4.2 hours to 1.5 hours and P90 total cycle time from 12.3 hours to 5.4 hours.
+
+![Scenario results](reports/figures/09_scenarios.png)
+
+Full write-up: [reports/recommendation.md](reports/recommendation.md)
 
 ## The data
 
@@ -17,7 +43,7 @@ I'm working through an event log for 100,000 orders (about 500k stage records) m
 | WarehouseID | WH01-WH04 |
 | Region | delivery region: North, West, South, East |
 
-The generator builds in a few realistic operational problems and some untidiness (310 orders still in flight at the cut-off). The numbers are illustrative, but the method works the same on a real WMS or OMS export.
+The generator builds in a few realistic operational problems (shift hours, a missing Sunday shift, an understaffed site, an afternoon peak) and some untidiness (310 orders still in flight at the cut-off). The analysis doesn't use the generator's settings; it finds these from the log. Because it's simulated, the numbers are illustrative, but the method works the same on a real WMS or OMS export.
 
 ## SQL
 
@@ -38,26 +64,38 @@ All queries run on SQLite. `sql/00_views.sql` builds three views: `stage_duratio
 
 SQLite has no percentile function, so P90/P95 use the nearest-rank method with `ROW_NUMBER()` and `COUNT()` window functions. The notebook uses the same method and checks its numbers against the SQL output.
 
-`python src/run_sql.py` loads the gzipped log into `data/process.db` in 100k-row chunks, adds indexes on `(OrderID, Stage)` and `Stage`, runs every query and saves the results to `outputs/` with the run time of each. The whole SQL layer takes about 15 seconds on 500k rows.
+## Working at 1 lakh orders
 
-## Python analysis
+I started with 500 orders, then scaled to 100,000 so the warehouse x time-of-day cells have thousands of orders each instead of a handful. That meant handling the volume properly:
+
+- The data is stored gzipped (5 MB), and the generator writes a byte-identical file every run.
+- `src/run_sql.py` loads the log into SQLite in 100k-row chunks, indexes it on `(OrderID, Stage)` and `Stage`, and prints how long each query takes. The whole SQL layer runs in about 15 seconds.
+- Query outputs are aggregates. The one per-order query exports a sample, so `outputs/` stays small; the full per-order table is the `stage_durations` view.
+- The strip chart plots a sample of 1,500 orders per warehouse, while the median and P90 lines use every order.
+- With this many orders nearly every difference is statistically significant, so the write-up focuses on effect sizes.
+
+The full pipeline (generate, SQL, notebook) takes under a minute.
+
+## Notebook
 
 [notebooks/process_bottleneck_analysis.ipynb](notebooks/process_bottleneck_analysis.ipynb) covers data checks, stage percentiles, box plots, the slow-order breakdown, warehouse/region variance (with Kruskal-Wallis and Mann-Whitney tests), time of day and day of week, the 90-day trend and the what-if scenarios. The notebook is generated from `src/analysis.py`.
 
-The strip chart of packing times plots 1,500 sampled orders per warehouse so 100k points don't turn into a blob; the median and P90 lines use every order.
+## How to run
 
-## Findings
+```
+pip install -r requirements.txt
+python run_all.py
+```
 
-- Packing is the bottleneck. It's 63% of all process time: 4.2 hours on average against 30-40 minutes for every other stage.
-- The average hides how bad it is. Packing's P90 is 9.7 hours (2.3x its mean); every other stage's P90 is about 1.6x its mean.
-- For orders that took over 24 hours end to end, Packing was 92% of their time. For orders taking 12-24 hours, 85%.
-- The problem is concentrated: WH02 and WH03 don't pack on Sundays (Sunday arrivals wait about 17 hours), nothing is packed between 22:00 and 06:00, 14:00-18:00 is the slowest daytime window, and WH03 got markedly slower from mid-September.
-- Delivery region isn't a factor once you account for which warehouse ships the order.
+That regenerates the data, runs the SQL into `outputs/`, and executes the notebook (charts go to `reports/figures/`).
 
-![Average vs P90 by stage](reports/figures/01_avg_vs_p90_by_stage.png)
+## Project structure
 
-![Stage share by cycle time band](reports/figures/04_stage_share_by_cycle_band.png)
-
-![Packing time by warehouse and arrival window](reports/figures/06_packing_heatmap_warehouse_by_hour.png)
-
-Recommendation write-up in progress.
+```
+data/            process_events.csv.gz
+sql/             00_views.sql + 10 analysis queries
+src/             generate_data.py, run_sql.py, analysis.py, make_notebook.py
+outputs/         one CSV per SQL query
+notebooks/       executed analysis notebook
+reports/         recommendation.md, figures/
+```
