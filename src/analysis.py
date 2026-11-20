@@ -1,17 +1,17 @@
 # %% [markdown]
 # # Order-to-delivery process: where does the time go?
 #
-# **Question:** which steps in the order-to-delivery process take the longest, and where is the
+# Question: which steps in the order-to-delivery process take the longest, and where is the
 # biggest opportunity to cut total cycle time?
 #
-# **Data:** `data/process_events.csv`, a sample event log I generated with `src/generate_data.py`
+# Data: `data/process_events.csv.gz`, a sample event log I generated with `src/generate_data.py`
 # (100,000 orders, 1 Aug to 29 Oct 2026, four warehouses, five stages, about 500k rows). One row per order per stage
 # with a start and end timestamp. The generator builds in a few operational problems on purpose
 # (see its docstring); this notebook tries to find them from the data alone, the way you would on
 # a real log.
 #
-# Stages: **Order Placed** (payment check and release to the warehouse) -> **Picked** -> **Packed**
-# -> **Dispatched** (carrier handover) -> **Delivered** (last mile). Each stage starts when the
+# Stages: Order Placed (payment check and release to the warehouse) -> Picked -> Packed
+# -> Dispatched (carrier handover) -> Delivered (last mile). Each stage starts when the
 # previous one ends, so an order's cycle time is the sum of its five stages.
 #
 # Percentiles use the nearest-rank method (`method="inverted_cdf"`) so they match the SQL in `sql/`.
@@ -304,12 +304,12 @@ save(fig, "06_packing_heatmap_warehouse_by_hour.png")
 # %% [markdown]
 # Three things show up:
 #
-# 1. **Nothing gets packed overnight.** 88% of orders reaching packing between midnight and 06:00, and
+# 1. Nothing gets packed overnight. 88% of orders reaching packing between midnight and 06:00, and
 #    every order arriving 22:00-24:00, took over 4 hours. They wait for the morning shift, at every warehouse.
-# 2. **14:00-18:00 is the slowest daytime window at every warehouse.** At WH01 and WH04 afternoon
+# 2. 14:00-18:00 is the slowest daytime window at every warehouse. At WH01 and WH04 afternoon
 #    arrivals take about 1.8x as long as morning ones (2.1-2.3h vs 1.2h). The queue builds when the
 #    shift is busiest.
-# 3. **WH03 is slower in every window**, so on top of the shift pattern it's short of capacity.
+# 3. WH03 is slower in every window, so on top of the shift pattern it's short of capacity.
 #
 # Day of week next. First, who actually packs on Sundays? Then WH02 + WH03 vs WH01 + WH04.
 
@@ -388,19 +388,19 @@ print(f"Mann-Whitney p: {stats.mannwhitneyu(*[g.Packed for _, g in orders[orders
 # Because the stages run back to back, I can replace an order's Packing time and recompute its
 # cycle time and delivery time directly. Two outcome measures:
 #
-# - **P90 cycle time** (what 1 in 10 customers experiences)
-# - **Same-day promise:** orders placed before 14:00 should be delivered the same calendar day.
+# - P90 cycle time (what 1 in 10 customers experiences)
+# - Same-day promise: orders placed before 14:00 should be delivered the same calendar day.
 #
 # Scenarios, from most targeted to broadest:
 #
-# - **A. Night packing cover:** orders that reach packing 22:00-06:00 get the median packing time
+# - A. Night packing cover: orders that reach packing 22:00-06:00 get the median packing time
 #   of that warehouse's daytime arrivals (as if a skeleton night team cleared them).
-# - **B. Sunday shift at WH02 + WH03:** Sunday arrivals there get that warehouse's weekday median.
-# - **C. Afternoon peak staffing:** 14:00-18:00 arrivals get the 06:00-14:00 median of their warehouse.
-# - **D. WH03 back to pre-September capacity:** WH03 orders from 15 Sep get their packing time scaled
+# - B. Sunday shift at WH02 + WH03: Sunday arrivals there get that warehouse's weekday median.
+# - C. Afternoon peak staffing: 14:00-18:00 arrivals get the 06:00-14:00 median of their warehouse.
+# - D. WH03 back to pre-September capacity: WH03 orders from 15 Sep get their packing time scaled
 #   by the before/after ratio of medians.
-# - **A + B + C + D** together.
-# - **Benchmark:** every warehouse packs like WH01 (each order's packing time is mapped to the same
+# - A + B + C + D together.
+# - Benchmark: every warehouse packs like WH01 (each order's packing time is mapped to the same
 #   percentile of WH01's distribution).
 
 # %%
