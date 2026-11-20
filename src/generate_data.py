@@ -15,9 +15,8 @@ The operation I'm simulating:
 - Dispatched:   handed to the carrier (~40 min)
 - Delivered:    last-mile (~35 min, city same-day network)
 
-Orders placed in the last day or so are still in flight, so some of their
-later stages have no end time (or no row yet). That's on purpose: the
-analysis has to deal with incomplete orders.
+Orders placed on the last day are still in progress when the data is
+pulled, so some of their later stages have no end time or no row yet.
 """
 from datetime import datetime, timedelta
 from pathlib import Path

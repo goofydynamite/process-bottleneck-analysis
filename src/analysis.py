@@ -1,20 +1,18 @@
 # %% [markdown]
-# # Order-to-delivery process: where does the time go?
+# # Order-to-delivery bottleneck analysis
 #
-# Question: which steps in the order-to-delivery process take the longest, and where is the
-# biggest opportunity to cut total cycle time?
+# Question: which stage in the order-to-delivery process takes the longest, and where would
+# cutting it shorten total cycle time the most?
 #
-# Data: `data/process_events.csv.gz`, a sample event log I generated with `src/generate_data.py`
-# (100,000 orders, 1 Aug to 29 Oct 2026, four warehouses, five stages, about 500k rows). One row per order per stage
-# with a start and end timestamp. The generator builds in a few operational problems on purpose
-# (see its docstring); this notebook tries to find them from the data alone, the way you would on
-# a real log.
+# Data: `data/process_events.csv.gz`, made with `src/generate_data.py`. 100,000 orders from
+# 1 Aug to 29 Oct 2026, four warehouses, five stages, about 500k rows (one per order per stage,
+# with a start and end time).
 #
-# Stages: Order Placed (payment check and release to the warehouse) -> Picked -> Packed
-# -> Dispatched (carrier handover) -> Delivered (last mile). Each stage starts when the
-# previous one ends, so an order's cycle time is the sum of its five stages.
+# Stages, in order: Order Placed (payment check, release to the warehouse), Picked, Packed,
+# Dispatched (handed to the carrier), Delivered (last mile). Each stage starts when the previous
+# one ends, so cycle time is the sum of the five.
 #
-# Percentiles use the nearest-rank method (`method="inverted_cdf"`) so they match the SQL in `sql/`.
+# Percentiles are nearest-rank (`method="inverted_cdf"`) to match the SQL.
 
 # %%
 import sqlite3
@@ -81,9 +79,8 @@ print("Stage gaps/overlaps:", (gaps & ordered.groupby("OrderID").cumcount().gt(0
 events[events.OrderID.isin(set(events.OrderID) - set(complete_ids))]
 
 # %% [markdown]
-# The three in-flight orders were placed on the last evening and are still being packed or
-# dispatched. Their finished stages are kept for the stage-level stats, but they're left out of
-# anything that needs an end-to-end cycle time.
+# 310 orders were still in progress when the data was pulled, all placed on 29 Oct. I keep their
+# finished stages for the stage stats but leave them out of anything that needs a full cycle time.
 
 # %%
 durations = events.dropna(subset=["StageEndTime"]).copy()
@@ -99,10 +96,9 @@ orders.head()
 # %% [markdown]
 # ## 2. Average vs P90 by stage
 #
-# The average alone hides the problem. Every stage except Packing has a P90 about 1.6x its mean,
-# which is what normal process noise looks like. Packing's P90 is 2.3x its mean, and its median is
-# less than half its mean: most orders pack in under two hours, but a long tail sits on the bench
-# for 10 hours or more.
+# Every stage except Packing has a P90 around 1.6x its average. Packing's is 2.3x, and its median
+# (117 min) is less than half its average. Most orders pack in under two hours, but 1 in 10 sits
+# there for close to 10 hours or more.
 
 # %%
 summary = durations.groupby("Stage")["duration_min"].agg(
@@ -136,8 +132,7 @@ save(fig, "01_avg_vs_p90_by_stage.png")
 # %% [markdown]
 # ## 3. Distribution of time per stage
 #
-# Box plot of every order's time in each stage. Log scale on the right so the four quick stages
-# are still readable.
+# Box plot per stage. The right one is on a log scale so the short stages are readable.
 
 # %%
 fig, axes = plt.subplots(1, 2, figsize=(11, 4), gridspec_kw={"width_ratios": [1, 1]})
@@ -181,8 +176,8 @@ ax.grid(axis="x", visible=False)
 save(fig, "03_cycle_time_distribution.png")
 
 # %% [markdown]
-# Which stage contributes most to the slow orders? Split orders into cycle-time bands and look at
-# how each band's time is divided between stages.
+# Which stage makes the slow orders slow? I split orders into cycle-time bands and looked at how
+# each band's time splits across the stages.
 
 # %%
 orders["band"] = pd.cut(orders.cycle_hours, [0, 12, 24, np.inf], labels=["Under 12h", "12-24h", "Over 24h"])
@@ -212,10 +207,10 @@ ax.grid(False)
 save(fig, "04_stage_share_by_cycle_band.png")
 
 # %% [markdown]
-# For the roughly 2,000 orders that took over 24 hours (2% of deliveries), Packing is 92% of their time. Even for the "normal" orders under
-# 12 hours, it's half. Nothing else comes close, so the rest of the notebook looks inside Packing.
+# Orders over 24 hours (about 2,000, 2% of deliveries) spend 92% of their time in Packing. Even
+# orders under 12 hours spend half their time there. So the rest of the notebook focuses on Packing.
 #
-# ## 5. Is Packing slow everywhere? Warehouse and region
+# ## 5. Packing by warehouse and region
 
 # %%
 pack = durations[durations.Stage == "Packed"].copy()
@@ -249,9 +244,9 @@ ax.grid(axis="y", visible=False)
 save(fig, "05_packing_by_warehouse.png")
 
 # %% [markdown]
-# Is it the warehouse or the delivery region? Average time in each stage for every
-# warehouse/region pair. Only the Packing column moves with the warehouse; the delivery region
-# barely matters (cross-region deliveries add ~10 minutes to the last mile, that's all).
+# Warehouse or delivery region? Average minutes per stage for each warehouse/region pair. Packing
+# changes with the warehouse; region hardly matters (cross-region orders add about 9 minutes to the
+# last mile).
 
 # %%
 wr = durations.pivot_table(index=["WarehouseID", "Region"], columns="Stage", values="duration_min",
@@ -273,11 +268,11 @@ within = [stats.mannwhitneyu(g[g.home_region].duration_min, g[~g.home_region].du
 print("Home vs other region, inside each warehouse (Mann-Whitney p):", [f"{p:.2f}" for p in within])
 
 # %% [markdown]
-# The region effect is only there because each region is mostly served by one warehouse. Inside a
-# warehouse, orders going to another region pack no slower (all p > 0.4). So this is a warehouse
+# Packing only looks different by region because each region is mostly served by one warehouse.
+# Within a warehouse, orders to other regions don't pack any slower (all p > 0.4). It's a warehouse
 # problem, not a geography one.
 #
-# ## 6. When does Packing go wrong? Time of day and day of week
+# ## 6. Packing by time of day and day of week
 
 # %%
 windows = pd.cut(pack.arrive_hour, [-1, 5, 9, 13, 17, 21, 23],
@@ -302,16 +297,15 @@ fig.colorbar(im, ax=ax, label="hours", shrink=0.8)
 save(fig, "06_packing_heatmap_warehouse_by_hour.png")
 
 # %% [markdown]
-# Three things show up:
+# From the heatmap:
 #
-# 1. Nothing gets packed overnight. 88% of orders reaching packing between midnight and 06:00, and
-#    every order arriving 22:00-24:00, took over 4 hours. They wait for the morning shift, at every warehouse.
-# 2. 14:00-18:00 is the slowest daytime window at every warehouse. At WH01 and WH04 afternoon
-#    arrivals take about 1.8x as long as morning ones (2.1-2.3h vs 1.2h). The queue builds when the
-#    shift is busiest.
-# 3. WH03 is slower in every window, so on top of the shift pattern it's short of capacity.
+# - Nothing is packed between 22:00 and 06:00. Every order arriving 22:00-24:00, and 88% of those
+#   arriving 00:00-06:00, took over 4 hours, at all four warehouses.
+# - 14:00-18:00 is the slowest daytime window everywhere. At WH01 and WH04, afternoon arrivals take
+#   2.1-2.3h against 1.2h in the morning.
+# - WH03 is the slowest in every window, so it has a capacity problem on top of the shift pattern.
 #
-# Day of week next. First, who actually packs on Sundays? Then WH02 + WH03 vs WH01 + WH04.
+# Next, day of week. First a check on which warehouses actually pack on Sundays.
 
 # %%
 day_order = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
@@ -337,10 +331,10 @@ ax.grid(axis="x", visible=False)
 save(fig, "07_packing_by_weekday.png")
 
 # %% [markdown]
-# Across 13 Sundays, WH02 finished no packing jobs during the day and WH03 finished 35 (vs 3,291 at
-# WH01). Neither runs a Sunday packing shift, so anything that reaches their benches on a Sunday
-# sits there ~17 hours on average, until Monday 06:00. Saturday is worse too (6h), because evening
-# arrivals roll straight into the Sunday gap.
+# Over 13 Sundays WH02 finished no packing jobs during the day and WH03 finished 35 (WH01: 3,291),
+# so neither has a Sunday shift. Orders that reach their benches on a Sunday wait about 17 hours on
+# average, until Monday 06:00. Saturday is worse too (6h), because Saturday evening orders run into
+# the Sunday gap.
 #
 # ## 7. 90-day trend
 
@@ -378,30 +372,30 @@ print(before_after.round(0))
 print(f"Mann-Whitney p: {stats.mannwhitneyu(*[g.Packed for _, g in orders[orders.WarehouseID == 'WH03'].groupby(orders.placed_at >= '2026-09-15')]).pvalue:.1e}")
 
 # %% [markdown]
-# The other stages are flat across all 13 weeks, and so is Packing at the other three
-# warehouses. WH03's Packing average steps up from mid-September and stays there. That's the
-# pattern you'd expect from a staffing change rather than demand (order volume grows gradually,
-# not in a step). Worth asking the WH03 site lead what changed that week.
+# The other stages are flat over all 13 weeks, and so is Packing at the other three warehouses.
+# WH03 jumps in the week of 14 September and stays up. Volume grew steadily rather than in one
+# step, so this looks like a staffing change. I'd ask the WH03 site lead what changed that week.
 #
-# ## 8. What would fixing Packing be worth?
+# ## 8. What-if scenarios
 #
-# Because the stages run back to back, I can replace an order's Packing time and recompute its
-# cycle time and delivery time directly. Two outcome measures:
+# The stages run back to back, so I can swap in a different Packing time for an order and
+# recompute its cycle time and delivery time. Two measures:
 #
-# - P90 cycle time (what 1 in 10 customers experiences)
-# - Same-day promise: orders placed before 14:00 should be delivered the same calendar day.
+# - P90 cycle time
+# - Same-day misses: orders placed before 14:00 that weren't delivered the same day (my own cutoff)
 #
-# Scenarios, from most targeted to broadest:
+# Scenarios:
 #
-# - A. Night packing cover: orders that reach packing 22:00-06:00 get the median packing time
-#   of that warehouse's daytime arrivals (as if a skeleton night team cleared them).
-# - B. Sunday shift at WH02 + WH03: Sunday arrivals there get that warehouse's weekday median.
-# - C. Afternoon peak staffing: 14:00-18:00 arrivals get the 06:00-14:00 median of their warehouse.
-# - D. WH03 back to pre-September capacity: WH03 orders from 15 Sep get their packing time scaled
-#   by the before/after ratio of medians.
-# - A + B + C + D together.
-# - Benchmark: every warehouse packs like WH01 (each order's packing time is mapped to the same
-#   percentile of WH01's distribution).
+# - A. Night cover: orders reaching packing 22:00-06:00 are capped at their warehouse's median
+#   daytime packing time.
+# - B. Sunday shift at WH02 and WH03: Sunday arrivals there are capped at the warehouse's weekday
+#   median.
+# - C. Afternoon staffing: 14:00-18:00 arrivals are capped at their warehouse's 06:00-14:00 median.
+# - D. WH03 back to pre-September: WH03 orders from 15 Sep scaled by the before/after ratio of
+#   medians.
+# - A+B+C+D together.
+# - Benchmark: every warehouse packs like WH01 (each order mapped to the same percentile of WH01's
+#   packing times).
 
 # %%
 p = orders.copy()
@@ -488,10 +482,9 @@ axes[0].set_title("What fixing Packing would do")
 save(fig, "09_scenarios.png")
 
 # %% [markdown]
-# ## 9. Takeaways
+# ## 9. Summary
 #
-# The numbers below come from the tables above; the write-up with the recommendation is in
-# `reports/recommendation.md`.
+# Key numbers for the write-up in `reports/recommendation.md`.
 
 # %%
 cur, combo, a = results.loc["Current"], results.loc["A+B+C+D"], results.loc["A. Night packing cover"]

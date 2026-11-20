@@ -1,16 +1,16 @@
 # Where to invest to cut order cycle time
 
-## The short version
+## Summary
 
-Packing is the bottleneck. It takes 63% of all the time orders spend in the process. The average order sits at the packing bench for 4.2 hours, while every other stage takes 30 to 40 minutes.
+Packing is the bottleneck. It takes 63% of the total time orders spend in the process. An average order spends 4.2 hours in Packing, while each of the other stages takes 30 to 40 minutes.
 
-The average actually understates it. Packing's P90 is 9.7 hours and its P95 is 15.6 hours. The other four stages have a P90 of about an hour. When an order is late, it's almost always because of Packing: for the roughly 2,000 orders that took more than 24 hours end to end, Packing was 92% of their time.
+The average actually makes it look better than it is. Packing's P90 is 9.7 hours and its P95 is 15.6 hours, while the other stages have a P90 of about an hour. Late orders are nearly always late because of Packing: about 2,000 orders took more than 24 hours, and 92% of their time was spent in Packing.
 
-My recommendation is to add a Sunday packing shift at WH02 and WH03 first, then deal with orders that reach packing after the evening shift ends, staff up the 14:00-18:00 window, and find out what changed at WH03 in mid-September. Together, those take P90 cycle time from 12.3 hours to 5.4 hours.
+I'd start with a Sunday packing shift at WH02 and WH03. After that: cover the hours after the evening shift ends, add staff for 14:00-18:00, and find out what changed at WH03 in mid-September. All four together bring P90 cycle time down from 12.3 hours to 5.4 hours.
 
-## What I found
+## Data
 
-Data: 100,000 orders placed between 1 August and 29 October 2026 across four warehouses, five stages each (Order Placed, Picked, Packed, Dispatched, Delivered), about 500k rows. 99,690 were delivered by the time the data was pulled. The data is a simulated event log (see the README), not a real company's.
+100,000 orders placed between 1 August and 29 October 2026 at four warehouses, each going through five stages (Order Placed, Picked, Packed, Dispatched, Delivered). That's about 500k rows. 99,690 orders had been delivered when the data was pulled. The data is simulated (details in the README).
 
 | Stage | Average | Median | P90 | P95 |
 |---|---|---|---|---|
@@ -20,20 +20,20 @@ Data: 100,000 orders placed between 1 August and 29 October 2026 across four war
 | Dispatched | 40 min | 36 min | 64 min | 76 min |
 | Delivered | 37 min | 33 min | 59 min | 70 min |
 
-End to end, the median order takes 4.5 hours but the P90 is 12.3 hours and the P95 is 18 hours. About 10,700 orders (11%) took over 12 hours.
+From order to delivery, the median order takes 4.5 hours, the P90 is 12.3 hours and the P95 is 18 hours. About 10,700 orders (11%) took longer than 12 hours.
 
-The Packing problem isn't spread evenly. It comes from four places:
+## Where the Packing delay comes from
 
-1. Sundays at WH02 and WH03. Neither warehouse runs a Sunday packing shift: across 13 Sundays, WH02 finished no packing jobs during the day and WH03 finished 35, against 3,291 at WH01. Orders that reach their benches on a Sunday wait 16.7 hours on average, until Monday 06:00. Saturday arrivals are hit too (6 hours), because evening orders roll into the Sunday gap. At WH01 and WH04, which pack on Sundays, Sunday looks like any other day (2.4 hours).
-2. Overnight. Packing runs 06:00-22:00 everywhere. Every order that reaches packing between 22:00 and midnight takes over 4 hours, and 88% of those arriving between midnight and 06:00 do. That's 15% of orders.
-3. The 14:00-18:00 window. It's the slowest daytime window at every warehouse. At WH01 and WH04, afternoon arrivals take 2.1-2.3 hours against 1.2 hours in the morning.
-4. WH03. It's the slowest warehouse in every time window (P90 16.5 hours vs about 7 hours at WH01 and WH04), and it got worse from mid-September. Its weekly average packing time stepped up from about 6.1 to 7.6 hours that week and stayed there, while the other three warehouses stayed flat at 3.3 hours.
+1. Sundays at WH02 and WH03. Neither site packs on Sundays. Over 13 Sundays WH02 finished no packing jobs during the day and WH03 finished 35, compared with 3,291 at WH01. Orders that reach packing there on a Sunday wait 16.7 hours on average, until Monday 06:00. Saturday orders wait longer too (6 hours), because the ones that come in Saturday evening run into Sunday. At WH01 and WH04, which do pack on Sundays, Sunday is a normal day (2.4 hours).
+2. Overnight. Packing runs from 06:00 to 22:00 at every site. All orders that reach packing between 22:00 and midnight take more than 4 hours, and so do 88% of those arriving between midnight and 06:00. About 15% of orders arrive in these hours.
+3. 14:00-18:00. This is the slowest part of the working day at every warehouse. At WH01 and WH04, orders arriving in the afternoon take 2.1-2.3 hours, compared with 1.2 hours in the morning.
+4. WH03. It's the slowest site at every time of day (P90 of 16.5 hours, against about 7 hours at WH01 and WH04). It also got worse in mid-September: its weekly average went from about 6.1 to 7.6 hours that week and stayed there. The other three sites stayed at about 3.3 hours.
 
-The delivery region doesn't matter. Packing times differ by region only because each region is mostly served by one warehouse. Inside each warehouse, orders going to other regions pack no slower than home-region orders (all p > 0.4), and cross-region deliveries only add about 9 minutes to the last mile.
+Delivery region doesn't matter. Packing times differ by region only because each region is mostly served by one warehouse. Within each warehouse, orders going to other regions are packed just as fast (all p > 0.4), and delivering to another region adds only about 9 minutes to the last mile.
 
-## What fixing it would be worth
+## What each fix would do
 
-I replaced each affected order's packing time with what it would have been under each fix and recomputed its delivery time. "Same-day miss" means an order placed before 14:00 that wasn't delivered the same calendar day.
+For each scenario I changed the Packing time of the affected orders and recalculated when they would have been delivered. A same-day miss here means an order placed before 14:00 that wasn't delivered the same day.
 
 | Scenario | Avg packing | P90 cycle | P95 cycle | Orders over 12h | Orders over 24h | Same-day misses |
 |---|---|---|---|---|---|---|
@@ -43,22 +43,22 @@ I replaced each affected order's packing time with what it would have been under
 | C. Afternoon peak staffing | 3.5 h | 11.2 h | 14.5 h | 7,918 | 1,954 | 6.2% |
 | D. WH03 back to pre-September | 3.8 h | 11.6 h | 16.4 h | 9,111 | 1,624 | 7.9% |
 | A + B + C + D | 1.5 h | 5.4 h | 6.1 h | 80 | 0 | 0.1% |
-| All warehouses pack like WH01 | 2.3 h | 9.4 h | 10.7 h | 1,257 | 0 | 0.5% |
+| All sites pack like WH01 | 2.3 h | 9.4 h | 10.7 h | 1,257 | 0 | 0.5% |
 
 ## Recommendation
 
-1. Start with a Sunday packing shift at WH02 and WH03. One shift a week at two sites cuts same-day misses from 8.3% to 1.0% (88% fewer) and orders over 12 hours by almost two thirds (10,681 to 3,906). WH01 and WH04 already do this, so the operating model exists.
-2. Deal with the overnight gap next. Night cover gives the biggest P90 improvement of any single fix (12.3 to 8.5 hours) and cuts orders over 24 hours from 2,027 to 871. It barely moves same-day misses, because 84% of night arrivals were placed after 14:00 and weren't promised same day anyway. A full night shift is expensive, so I'd first test extending the evening shift to midnight at one site for a month and measure the change.
-3. Add packing capacity for 14:00-18:00, either by moving staff from the quieter 18:00-22:00 window or with a short overlap shift. On its own that cuts same-day misses from 8.3% to 6.2%.
-4. Investigate WH03 before spending money there. Something changed in the week of 14 September. The step is sudden while order volume grew gradually, which points to staffing (a packer leaving, a bench out of action) rather than demand. A conversation with the site lead and a look at the rota should answer it.
+1. Add a Sunday packing shift at WH02 and WH03 first. It's one shift a week at two sites, and it takes same-day misses from 8.3% to 1.0% and orders over 12 hours from 10,681 to 3,906. WH01 and WH04 already work Sundays, so there's a model to copy.
+2. Then look at the overnight gap. Of the single fixes, night cover improves P90 the most (12.3 to 8.5 hours) and reduces orders over 24 hours from 2,027 to 871. It hardly changes same-day misses, because 84% of overnight arrivals were placed after 14:00 and weren't due the same day anyway. A full night shift costs a lot, so I'd first try keeping one site open until midnight for a month and compare.
+3. Add packing staff for 14:00-18:00, for example by moving people from the quieter 18:00-22:00 slot or adding a short overlap shift. On its own this takes same-day misses from 8.3% to 6.2%.
+4. Look into WH03 before spending money there. Something changed in the week of 14 September. It was a sudden jump while order volume grew slowly, so it looks like a staffing issue (someone leaving, a bench out of use) rather than demand. Talking to the site lead and checking the rota should explain it.
 
-The headline: cutting average Packing time from 4.2 hours to 1.5 hours would cut P90 total cycle time from 12.3 hours to 5.4 hours and same-day misses from 8.3% to 0.1%. Most of that comes from covering the hours nobody is packing (Sundays and overnight), not from making packers faster.
+In numbers: bringing average Packing time down from 4.2 to 1.5 hours would cut P90 cycle time from 12.3 to 5.4 hours and same-day misses from 8.3% to 0.1%. Most of that comes from covering the hours when nobody packs (Sundays and overnight), not from packing faster.
 
-What I'd track after the change: weekly P90 Packing time per warehouse (not the average), the share of Sunday and overnight arrivals packed within 4 hours, and same-day misses.
+After the changes I'd track three things every week: P90 Packing time per warehouse (not the average), the share of Sunday and overnight orders packed within 4 hours, and same-day misses.
 
-## Caveats
+## Limitations
 
-- The data is simulated, so the specific numbers are illustrative. The method (stage durations from an event log, percentiles over averages, slicing the bottleneck by site, time and day, then pricing fixes) is what carries over to a real log.
-- With 100,000 orders almost every difference is statistically significant, so I've focused on the size of the effects rather than p-values.
-- The scenarios assume that clearing one queue doesn't create a new one further down. Dispatch and last mile look like they have spare capacity (their averages are flat across all 13 weeks while volume grew by half), but that should be checked before relying on the combined figure.
-- The same-day rule (placed before 14:00, delivered the same day) is my assumption. Changing the cutoff changes the miss rate but not the ranking of the fixes.
+- The data is simulated, so the exact numbers don't mean much on their own. The approach is what would carry over to real data: work out stage times from the event log, look at percentiles as well as averages, break the slow stage down by site, time and day, and then estimate what each fix is worth.
+- With 100,000 orders almost every difference is statistically significant, so I focused on how big the effects are.
+- The scenarios assume that speeding up Packing doesn't just move the queue to Dispatch or delivery. Those stages look like they have spare capacity (their averages stayed flat for 13 weeks while volume grew by about half), but that needs checking before relying on the combined number.
+- The same-day rule (placed before 14:00, delivered the same day) is my own assumption. A different cutoff changes the miss rates but not which fix comes out on top.
